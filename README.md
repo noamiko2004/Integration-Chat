@@ -1,4 +1,4 @@
-![InteChat Logo](client/assets/InteChatLogo.png)
+![InteChat Logo](Client/Assets/InteChatLogo.png)
 
 # **Integration-Chat: InteChat**
 
