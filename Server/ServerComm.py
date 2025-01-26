@@ -1,13 +1,24 @@
-# The file making the communications for the server
-# - Will connect to various clients using sockets, and will use other classes like encryption classes to make the communication secured
+"""
+ServerComm.py
 
-# CLASSES
-# ServerComm
+Handles all socket-based communication between the server and connected clients.
 
-# FUNCTIONS
-# 
+Responsibilities:
+1. Accept and manage client connections.
+2. Send and receive data from clients.
+3. Handle disconnections and broadcast messages in group chats.
 
-# KEY VARIABLES
-# server_socket (Multiple sockets) - the socket of the server, client's initiates communications with the server, listening on port 11113 which is the decided port
-# client_public_key - the public key of the client
-# server_public_key - the public key of the client
+Key Classes:
+- ServerConnection: Manages the server socket and client connections.
+
+Key Functions:
+- accept_connections(): Accept new client connections and assign them to threads.
+- send_to_client(client_socket, data): Send data to a specific client.
+- receive_from_client(client_socket): Receive data from a client.
+- broadcast(data, group_id=None): Send data to all clients or a specific group.
+- close_connection(client_socket): Gracefully handle client disconnections.
+
+Key Variables:
+- server_socket: The socket object for managing the server.
+- connected_clients: A dictionary to track connected clients (e.g., `{client_socket: client_info}`).
+"""
