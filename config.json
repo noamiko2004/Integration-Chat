@@ -1,0 +1,7 @@
+     
+    {
+        "comment": "This will be a file where important global information will be stored",
+        "server_ip_address": "127.0.0.1",
+        "set_port": 8080
+    }
+  
