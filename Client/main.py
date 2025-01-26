@@ -1,12 +1,24 @@
-# The main file of the Client
-# - Will use other classes in the client to give a CLI Chat System to the client
-# - Communicates with the server
+"""
+main.py
 
-# CLASSES
-# main - will utilize imports to build the functioning chat system for the client
+Entry point for the client-side application.
 
-# FUNCTIONS
-# 
+Responsibilities:
+1. Display the main menu for user actions:
+   - Register a new user.
+   - Log in to an existing account.
+   - Join or start a chat (private or group).
+2. Handle user input and interact with:
+   - ClientComm: For communication with the server.
+   - Encryption: For secure message exchange.
+3. Load chat history from the server when entering a conversation.
 
-# KEY VARIABLES
-# user_username - a string that will save the user's username (Through the user's input)
+Key Functions:
+- display_menu(): Show the main menu and handle user choices.
+- handle_chat(): Manage user interactions in an active chat session.
+- handle_login(): Prompt for login credentials and send to the server.
+- handle_registration(): Prompt for registration details and send to the server.
+
+Key Variables:
+- session_token: Holds the authentication token after a successful login.
+"""

@@ -1,7 +1,13 @@
-     
-    {
-        "comment": "This will be a file where important global information will be stored",
-        "server_ip_address": "127.0.0.1",
-        "set_port": 8080
+{
+    "comment": "Global configuration for the chat project",
+    "server_ip_address": "127.0.0.1",
+    "server_port": 8080,
+    "encryption": {
+        "key_length": 2048,
+        "algorithm": "RSA"
+    },
+    "chat_settings": {
+        "max_message_length": 1024,
+        "message_history_limit": 100
     }
-  
+}

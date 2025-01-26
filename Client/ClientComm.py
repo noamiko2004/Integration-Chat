@@ -1,14 +1,27 @@
-# The file making the communications for the client
-# - Will connect to the server using sockets, and will use other classes like encryption classes to make the communication secured
+"""
+ClientComm.py
 
-# CLASSES
-# ClientComm
+Manages all communication between the client and server.
 
-# FUNCTIONS
-# 
+Responsibilities:
+1. Establish and maintain a secure connection to the server.
+2. Send requests for user actions (registration, login, fetching chats).
+3. Send and receive messages during active chat sessions.
+4. Fetch chat history from the server when entering a conversation.
 
-# KEY VARIABLES
-# client_socket - the socket of the client, connection to the server established at the start of running using the server's IP and decided port from the configuration json
-# client_private_key - the private key of the client
-# client_public_key - the public key of the client
-# server_public_key - the public key of the server
+Key Classes:
+- Message: Represents a message with attributes like content, sender, timestamp, and chat ID.
+
+Key Functions:
+- connect(): Establish a connection with the server using IP and port from config.json.
+- send_request(request_type, data): Send a formatted request to the server (e.g., register, login, fetch chat history).
+- receive_response(): Wait for and handle the server's response.
+- send_message(message): Send a message object to the server.
+- receive_message(): Receive a new message from the server during an active session.
+- disconnect(): Gracefully close the connection.
+
+Key Variables:
+- socket: The socket object for managing the connection.
+- server_ip: Loaded from config.json, specifies the server's IP address.
+- server_port: Loaded from config.json, specifies the server's port.
+"""
