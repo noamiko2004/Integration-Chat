@@ -8,5 +8,5 @@
 # FUNCTIONS
 # 
 
-# VARIABLES
+# KEY VARIABLES
 # user_username - a string that will save the user's username (Through the user's input)
