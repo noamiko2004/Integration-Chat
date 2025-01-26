@@ -1,9 +1,9 @@
 # Integration-Chat
 A simple multi-user chat system - InteChat! Welcome!
 
-    # Purpose
-    InteChat is a multi-user chat system! Secure, fast and reliable
-    Users will be able to chat with eachother, and groups they create
+# Purpose
+InteChat is a multi-user chat system! Secure, fast and reliable
+Users will be able to chat with eachother, and groups they create
 
 Our rules:
     -   Project will be split to the Client side and the Server side
