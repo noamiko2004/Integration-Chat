@@ -1,24 +1,29 @@
 """
 Encryption.py
 
-Handles all encryption and decryption tasks to ensure secure communication.
+Handles encryption and decryption to ensure secure communication with the server.
 
 Responsibilities:
-1. Generate and manage public/private key pairs for encryption.
-2. Encrypt outgoing messages before sending them to the server.
-3. Decrypt incoming messages received from the server.
+1. Generate the client's RSA public/private key pair.
+2. Receive and store the server's public key.
+3. Generate a session key and encrypt it using the server's public key.
+4. Encrypt and decrypt messages using AES for secure communication.
 
 Key Classes:
-- EncryptionManager: Manages keys and provides encryption and decryption functions.
+- EncryptionManager: Manages RSA and AES operations.
 
 Key Functions:
-- generate_keys(): Generate RSA public/private key pairs.
-- get_public_key(): Return the client's public key for sharing with the server.
-- encrypt_message(message, public_key): Encrypt a message using the server's or recipient's public key.
-- decrypt_message(encrypted_message): Decrypt a received message using the private key.
+- generate_keys(): Generate RSA public and private keys for the client.
+- get_public_key(): Return the client's public key for optional use.
+- set_server_public_key(server_public_key_pem): Store the server's public key.
+- generate_session_key(): Generate a random session key for AES encryption.
+- encrypt_session_key(): Encrypt the session key with the server's public key.
+- encrypt_message(message): Encrypt a message using the session key (AES).
+- decrypt_message(encrypted_message): Decrypt a message using the session key (AES).
 
 Key Variables:
-- private_key: The client's private key used for decryption.
-- public_key: The client's public key shared with the server for encryption.
-- server_public_key: The server's public key, used to encrypt sensitive data sent to the server.
+- private_key: The client's private RSA key for optional decryption.
+- public_key: The client's public RSA key for sharing with the server.
+- server_public_key: The server's public key for encrypting the session key.
+- session_key: The AES session key used for encrypting/decrypting chat messages.
 """
