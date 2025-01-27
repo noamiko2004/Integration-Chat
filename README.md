@@ -3,7 +3,7 @@
 # **Integration-Chat: InteChat**
 
 Welcome to **InteChat**, a secure, fast, and reliable multi-user chat system! With InteChat, users can seamlessly connect with others in private chats or groups, enjoying end-to-end encryption and robust features.
-Test Pycharm with Github
+
 ---
 
 ## **Features**
