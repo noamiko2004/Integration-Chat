@@ -152,33 +152,16 @@ class ServerConnection:
         
         try:
             if data["type"] == "send_message":
-                # print("Received encrypted message data:", data["data"]["message"])
-                
                 # Decrypt the message
                 encrypted_message = bytes.fromhex(data["data"]["message"])
-                # print("Converted to bytes:", encrypted_message)
-                
-                # Decrypt message (returns string)
                 decrypted_message = self.encryption.decrypt_message(
                     encrypted_message, 
                     client_info.client_id
                 )
-                # print(f"Decrypted message: {decrypted_message}")
+                print(f"Message from {client_info.address}: {decrypted_message}")
                 
-                # Echo back to sender (for testing)
-                encrypted_reply = self.encryption.encrypt_message(
-                    decrypted_message,  # Now we pass a string
-                    client_info.client_id
-                )
-                # print("Re-encrypted reply:", encrypted_reply.hex())
-                
-                response = {
-                    "type": "new_message",
-                    "data": {"message": encrypted_reply.hex()}
-                }
-                # print("Sending response:", response)
-                
-                self.send_to_client(client_socket, response)
+                # Message received - in actual chat app, this is where 
+                # we would handle message routing to other clients
                 
             elif data["type"] == "disconnect":
                 raise ConnectionError("Client requested disconnect")
@@ -186,7 +169,7 @@ class ServerConnection:
         except Exception as e:
             print(f"Error handling message: {str(e)}")
             raise
-
+        
     def send_to_client(self, client_socket, data):
         """Send data to a specific client."""
         try:
