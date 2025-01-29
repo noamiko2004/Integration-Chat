@@ -65,6 +65,6 @@ class EncryptionManager:
         return decryptor.update(ciphertext) + decryptor.finalize().decode()
 
 # Example Usage:
-encryption_manager = EncryptionManager()
-encryption_manager.generate_keys()
-print(encryption_manager.get_public_key())
+# encryption_manager = EncryptionManager()
+# encryption_manager.generate_keys()
+# print(encryption_manager.get_public_key())

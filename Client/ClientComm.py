@@ -1,27 +1,84 @@
-"""
-ClientComm.py
+import socket
+import json
+from Encryption import EncryptionManager
 
-Manages all communication between the client and server.
+class ClientComm:
+    def __init__(self, config_path="../config.json"):
+        """Initialize the client communication manager."""
+        self.socket = None
+        self.server_ip = None
+        self.server_port = None
+        self.encryption = EncryptionManager()
+        import os
 
-Responsibilities:
-1. Establish and maintain a secure connection to the server.
-2. Send requests for user actions (registration, login, fetching chats).
-3. Send and receive messages during active chat sessions.
-4. Fetch chat history from the server when entering a conversation.
+        # Get the absolute path of the config file
+        config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.json"))
+        self.load_config(config_path)
+    
+    def load_config(self, config_path):
+        """Load server IP and port from config.json."""
+        with open(config_path, "r") as file:
+            config = json.load(file)
+            self.server_ip = config.get("server_ip_address")
+            self.server_port = config.get("server_port")
+    
+    def connect(self):
+        """Establish a connection with the server."""
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.connect((self.server_ip, self.server_port))
+        print(f"Connected to server at {self.server_ip}:{self.server_port}")
+    
+    def send_request(self, request_type, data):
+        """Send a formatted request to the server."""
+        request = json.dumps({"type": request_type, "data": data})
+        self.socket.sendall(request.encode())
+    
+    def receive_response(self):
+        """Wait for and handle the server's response."""
+        response = self.socket.recv(4096).decode()
+        return json.loads(response)
+    
+    def send_message(self, message):
+        """Encrypt and send a message object to the server."""
+        encrypted_message = self.encryption.encrypt_message(message)
+        self.send_request("send_message", {"message": encrypted_message.hex()})
+    
+    def receive_message(self):
+        """Receive a new message from the server during an active session."""
+        response = self.receive_response()
+        if response["type"] == "new_message":
+            encrypted_message = bytes.fromhex(response["data"]["message"])
+            decrypted_message = self.encryption.decrypt_message(encrypted_message)
+            return decrypted_message
+    
+    def disconnect(self):
+        """Gracefully close the connection."""
+        self.socket.close()
+        print("Disconnected from server.")
 
-Key Classes:
-- Message: Represents a message with attributes like content, sender, timestamp, and chat ID.
+# Example Usage:
+client = ClientComm()
+client.connect()
 
-Key Functions:
-- connect(): Establish a connection with the server using IP and port from config.json.
-- send_request(request_type, data): Send a formatted request to the server (e.g., register, login, fetch chat history).
-- receive_response(): Wait for and handle the server's response.
-- send_message(message): Send a message object to the server.
-- receive_message(): Receive a new message from the server during an active session.
-- disconnect(): Gracefully close the connection.
+# Test Registration
+client.send_request("register", {"username": "testuser", "password": "testpass"})
+response = client.receive_response()
+print("Register Response:", response)
 
-Key Variables:
-- socket: The socket object for managing the connection.
-- server_ip: Loaded from config.json, specifies the server's IP address.
-- server_port: Loaded from config.json, specifies the server's port.
-"""
+# Test Login
+client.send_request("login", {"username": "testuser", "password": "testpass"})
+response = client.receive_response()
+print("Login Response:", response)
+
+# Test Sending Encrypted Message
+test_message = "Hello, this is a secure message!"
+client.send_message(test_message)
+print("Sent Encrypted Message:", test_message)
+
+# Test Receiving Message
+received_message = client.receive_message()
+print("Received Decrypted Message:", received_message)
+
+# Test Disconnecting
+client.disconnect()
+print("Client disconnected successfully.")
