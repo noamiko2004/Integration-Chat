@@ -15,7 +15,7 @@ class UserManager:
         self._ensure_db_directory()
         self.conn = self._create_connection()
         self._create_tables()
-        
+
     def _ensure_db_directory(self):
         """Ensure the database directory exists."""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
@@ -267,15 +267,13 @@ class UserManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute(
-                '''DELETE FROM sessions 
-                   WHERE created_at < datetime('now', '-? hours')''',
-                (max_age_hours,)
+                'DELETE FROM sessions WHERE created_at < datetime("now", "-24 hours")'
             )
             self.conn.commit()
         except sqlite3.Error as e:
             self.conn.rollback()
             print(f"Error cleaning up sessions: {e}")
-
+            
     def close(self):
         """Close the database connection."""
         if self.conn:
