@@ -5,7 +5,7 @@ import time
 from Encryption import EncryptionManager
 
 class ServerConnection:
-    def __init__(self, config_path="../config.json"):
+    def __init__(self, handlers=None, config_path="../config.json"):
         """Initialize the server connection manager."""
         self.server_socket = None
         self.connected_clients = {}  # {client_socket: ClientInfo}
@@ -14,11 +14,59 @@ class ServerConnection:
         self.encryption = EncryptionManager()
         self.is_running = False
         self.accept_thread = None
+        self.handlers = handlers or {}  # Store message handlers
         self.load_config(config_path)
         
         # Generate server keys on initialization
         self.encryption.generate_keys()
-    
+
+    def process_request(self, message_type, client_socket, data):
+        """Process a client request and return the appropriate response."""
+        try:
+            print(f"Processing {message_type} request with data: {data}")
+            
+            # Use the handler from our handlers dictionary
+            if message_type in self.handlers:
+                handler = self.handlers[message_type]
+                try:
+                    handler_response = handler(client_socket, data)
+                    
+                    # Format the response properly with required type field
+                    response = {
+                        "type": f"{message_type}_response",
+                        "data": handler_response
+                    }
+                except Exception as handler_error:
+                    print(f"Handler error: {handler_error}")
+                    response = {
+                        "type": "error_response",
+                        "data": {
+                            "success": False,
+                            "message": str(handler_error)
+                        }
+                    }
+            else:
+                response = {
+                    "type": "error_response",
+                    "data": {
+                        "success": False,
+                        "message": f"Unknown request type: {message_type}"
+                    }
+                }
+                
+            print(f"Sending response: {response}")
+            return response
+            
+        except Exception as e:
+            print(f"Error processing request: {e}")
+            return {
+                "type": "error_response",
+                "data": {
+                    "success": False,
+                    "message": str(e)
+                }
+            }        
+        
     class ClientInfo:
         """Helper class to store client-specific information."""
         def __init__(self, address, client_id):
@@ -98,43 +146,66 @@ class ServerConnection:
                     # Handle secure connection establishment
                     if not self._handle_security_handshake(client_socket, data):
                         break
+                    else:
+                        print(f"Security handshake completed with {client_info.address}")
                 else:
-                    # Handle regular messages
-                    self._handle_client_message(client_socket, data)
-                
+                    # Process the message based on its type
+                    message_type = data.get('type')
+                    print(f"Received message type: {message_type} from {client_info.address}")
+                    
+                    if message_type in ['register', 'login', 'create_chat', 'send_message', 
+                                    'get_chats', 'get_messages', 'disconnect']:
+                        # Process the request
+                        response = self.process_request(message_type, client_socket, data.get('data', {}))
+                        # Send response back to client
+                        self.send_to_client(client_socket, response)
+                    else:
+                        print(f"Unknown message type: {message_type}")
+
                 client_info.last_activity = time.time()
                 
         except Exception as e:
             print(f"Error handling client {client_info.address}: {str(e)}")
         finally:
             self.close_connection(client_socket)
-    
+
     def _handle_security_handshake(self, client_socket, data):
         """Handle the security handshake protocol."""
         client_info = self.connected_clients[client_socket]
         try:
-            if data["type"] == "key_exchange":
+            if not isinstance(data, dict):
+                print(f"Invalid data format received: {data}")
+                return False
+
+            print(f"Processing handshake data: {data}")  # Debug print
+            
+            msg_type = data.get('type', '')
+            msg_data = data.get('data', {})
+
+            if msg_type == "key_exchange":
                 # Receive client's public key and send server's
-                client_info.public_key = data["data"]["client_public_key"].encode()
-                self.send_to_client(client_socket, {
+                client_info.public_key = msg_data.get("client_public_key", "").encode()
+                response = {
                     "type": "key_exchange",
                     "data": {
                         "server_public_key": self.encryption.get_public_key().decode()
                     }
-                })
+                }
+                self.send_to_client(client_socket, response)
                 return True
                 
-            elif data["type"] == "session_key":
+            elif msg_type == "session_key":
                 # Receive and store client's session key
-                encrypted_key = bytes.fromhex(data["data"]["encrypted_session_key"])
+                encrypted_key = bytes.fromhex(msg_data.get("encrypted_session_key", ""))
                 session_key = self.encryption.decrypt_session_key(encrypted_key)
                 self.encryption.store_client_session_key(client_info.client_id, session_key)
                 
                 # Confirm session establishment
-                self.send_to_client(client_socket, {
+                response = {
                     "type": "session_confirmed",
                     "data": {}
-                })
+                }
+                self.send_to_client(client_socket, response)
                 
                 client_info.session_established = True
                 print(f"Secure session established with {client_info.address}")
@@ -223,7 +294,7 @@ class ServerConnection:
             self.accept_thread.join(timeout=2.0)
         
         print("Server stopped.")
-
+        
 # Test Cases
 if __name__ == "__main__":
     print("\nStarting server for testing...")

@@ -6,7 +6,6 @@ from Encryption import EncryptionManager
 
 class ClientComm:
     def __init__(self, config_path="../config.json"):
-        """Initialize the client communication manager."""
         self.socket = None
         self.server_ip = None
         self.server_port = None
@@ -14,9 +13,9 @@ class ClientComm:
         self.is_connected = False
         self.message_callback = None
         self.receive_thread = None
+        self.response_queue = []  # Queue for responses to direct requests
         import os
 
-        # Get the absolute path of the config file
         config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.json"))
         self.load_config(config_path)
     
@@ -57,17 +56,26 @@ class ClientComm:
     def _establish_secure_connection(self):
         """Perform the secure handshake protocol with the server."""
         try:
+            print("Starting security handshake...")  # Debug print
+            
             # 1. Generate client keys
             self.encryption.generate_keys()
             
             # 2. Send public key to server
-            self.send_request("key_exchange", {
-                "client_public_key": self.encryption.get_public_key().decode()
-            })
+            request = {
+                "type": "key_exchange",
+                "data": {
+                    "client_public_key": self.encryption.get_public_key().decode()
+                }
+            }
+            self.socket.sendall(json.dumps(request).encode())
+            print("Sent key exchange request")  # Debug print
             
             # 3. Receive server's public key
-            response = self.receive_response()
-            if response["type"] != "key_exchange":
+            response = json.loads(self.socket.recv(4096).decode())
+            print(f"Received server response: {response}")  # Debug print
+            
+            if response.get("type") != "key_exchange":
                 raise ValueError("Invalid key exchange response")
             
             self.encryption.set_server_public_key(response["data"]["server_public_key"].encode())
@@ -75,43 +83,56 @@ class ClientComm:
             # 4. Generate and send session key
             session_key = self.encryption.generate_session_key()
             encrypted_session_key = self.encryption.encrypt_session_key()
-            self.send_request("session_key", {
-                "encrypted_session_key": encrypted_session_key.hex()
-            })
+            
+            request = {
+                "type": "session_key",
+                "data": {
+                    "encrypted_session_key": encrypted_session_key.hex()
+                }
+            }
+            self.socket.sendall(json.dumps(request).encode())
+            print("Sent session key")  # Debug print
             
             # 5. Wait for confirmation
-            response = self.receive_response()
-            if response["type"] != "session_confirmed":
+            response = json.loads(self.socket.recv(4096).decode())
+            print(f"Received confirmation response: {response}")  # Debug print
+            
+            if response.get("type") != "session_confirmed":
                 raise ValueError("Session establishment failed")
             
             print("Secure connection established")
             return True
+            
         except Exception as e:
+            print(f"Handshake error: {str(e)}")  # Debug print
             raise RuntimeError(f"Failed to establish secure connection: {str(e)}")
-    
+        
     def send_request(self, request_type, data):
         """Send a formatted request to the server."""
         if not self.is_connected:
             raise ConnectionError("Not connected to server")
         
         try:
-            request = json.dumps({"type": request_type, "data": data})
-            self.socket.sendall(request.encode())
+            request = {
+                "type": request_type,
+                "data": data
+            }
+            self.socket.sendall(json.dumps(request).encode())
+            return True
         except Exception as e:
             self.is_connected = False
             raise RuntimeError(f"Failed to send request: {str(e)}")
-    
+
     def receive_response(self):
         """Wait for and handle the server's response."""
         try:
             response = self.socket.recv(4096).decode()
-            return json.loads(response)
-        except json.JSONDecodeError:
-            raise ValueError("Invalid response format")
+            parsed_response = json.loads(response)
+            return parsed_response['data']
         except Exception as e:
             self.is_connected = False
             raise RuntimeError(f"Failed to receive response: {str(e)}")
-    
+            
     def send_message(self, message):
         """Encrypt and send a message object to the server."""
         try:
@@ -126,24 +147,27 @@ class ClientComm:
         """Background thread for receiving messages."""
         while self.is_connected:
             try:
-                response = self.receive_response()
-                # print("Received response:", response)
+                data = self.socket.recv(4096).decode()
+                if not data:
+                    continue
+
+                response = json.loads(data)
+                print(f"Debug: Received in loop: {response}")  # Debug print
                 
-                if response["type"] == "new_message":
-                    encrypted_message = bytes.fromhex(response["data"]["message"])
-                    # print("Decoded hex message:", encrypted_message)
-                    
-                    decrypted_message = self.encryption.decrypt_message(encrypted_message)
-                    print("Decrypted message:", decrypted_message)
-                    
+                # Handle regular chat messages
+                if response.get("type") == "new_message":
                     if self.message_callback:
-                        self.message_callback(decrypted_message)
+                        self.message_callback(response.get("data"))
+                else:
+                    # Store response for the main thread
+                    print(f"Debug: Adding to queue: {response}")  # Debug print
+                    self.response_queue.append(response)
                         
             except Exception as e:
                 print(f"Error in receive loop: {str(e)}")
                 self.is_connected = False
                 break
-
+            
     def set_message_callback(self, callback):
         """Set callback function for handling received messages."""
         self.message_callback = callback
@@ -160,6 +184,32 @@ class ClientComm:
         if self.receive_thread:
             self.receive_thread.join(timeout=1.0)
         print("Disconnected from server.")
+
+    def send_register_request(self, username, password):
+        """Send a registration request."""
+        return self.send_request("register", {
+            "username": username,
+            "password": password
+        })
+    
+    def send_login_request(self, username, password):
+        """Send a login request."""
+        return self.send_request("login", {
+            "username": username,
+            "password": password
+        })
+
+    def get_next_response(self):
+        """Get the next response from the queue."""
+        while self.is_connected and not self.response_queue:
+            time.sleep(0.1)  # Wait for response
+            
+        if not self.response_queue:
+            return None
+            
+        response = self.response_queue.pop(0)
+        return response.get('data')
+
 
 # Test Cases
 if __name__ == "__main__":
