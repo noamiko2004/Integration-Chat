@@ -48,17 +48,6 @@ class EncryptionManager:
             )
         )
 
-    def encrypt_message(self, message):
-        """Encrypt a message using AES with the session key."""
-        if not self.session_key:
-            raise ValueError("Session key is not set.")
-
-        iv = os.urandom(16)  # Initialization vector
-        cipher = Cipher(algorithms.AES(self.session_key), modes.CFB(iv))
-        encryptor = cipher.encryptor()
-        ciphertext = encryptor.update(message.encode()) + encryptor.finalize()
-        return iv + ciphertext
-
     def decrypt_message(self, encrypted_message):
         """Decrypt a message using AES with the session key."""
         if not self.session_key:
@@ -69,8 +58,27 @@ class EncryptionManager:
 
         cipher = Cipher(algorithms.AES(self.session_key), modes.CFB(iv))
         decryptor = cipher.decryptor()
-        return decryptor.update(ciphertext) + decryptor.finalize().decode()
+        decrypted_bytes = decryptor.update(ciphertext) + decryptor.finalize()
+        return decrypted_bytes.decode()  # Convert bytes to string after decryption
 
+    def encrypt_message(self, message):
+        """Encrypt a message using AES with the session key."""
+        if not self.session_key:
+            raise ValueError("Session key is not set.")
+
+        # Ensure message is bytes
+        if isinstance(message, str):
+            message_bytes = message.encode()
+        else:
+            message_bytes = message
+
+        iv = os.urandom(16)  # Initialization vector
+        cipher = Cipher(algorithms.AES(self.session_key), modes.CFB(iv))
+        encryptor = cipher.encryptor()
+        ciphertext = encryptor.update(message_bytes) + encryptor.finalize()
+        return iv + ciphertext
+    
+    
 # Example Usage:
 # encryption_manager = EncryptionManager()
 # encryption_manager.generate_keys()

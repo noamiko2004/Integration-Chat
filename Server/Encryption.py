@@ -39,20 +39,8 @@ class EncryptionManager:
         """Store the session key for a specific client."""
         self.client_session_keys[client_id] = session_key
 
-    def encrypt_message(self, message, client_id):
-        """Encrypt a message using a client’s session key (AES)."""
-        session_key = self.client_session_keys.get(client_id)
-        if not session_key:
-            raise ValueError(f"No session key found for client ID: {client_id}")
-
-        iv = os.urandom(16)  # Initialization vector
-        cipher = Cipher(algorithms.AES(session_key), modes.CFB(iv))
-        encryptor = cipher.encryptor()
-        ciphertext = encryptor.update(message.encode()) + encryptor.finalize()
-        return iv + ciphertext
-
     def decrypt_message(self, encrypted_message, client_id):
-        """Decrypt a message using a client’s session key (AES)."""
+        """Decrypt a message using a client's session key (AES)."""
         session_key = self.client_session_keys.get(client_id)
         if not session_key:
             raise ValueError(f"No session key found for client ID: {client_id}")
@@ -62,8 +50,26 @@ class EncryptionManager:
 
         cipher = Cipher(algorithms.AES(session_key), modes.CFB(iv))
         decryptor = cipher.decryptor()
-        return decryptor.update(ciphertext) + decryptor.finalize().decode()
+        decrypted_bytes = decryptor.update(ciphertext) + decryptor.finalize()
+        return decrypted_bytes.decode()  # Convert bytes to string after decryption
 
+    def encrypt_message(self, message, client_id):
+        """Encrypt a message using a client's session key (AES)."""
+        session_key = self.client_session_keys.get(client_id)
+        if not session_key:
+            raise ValueError(f"No session key found for client ID: {client_id}")
+
+        # Ensure message is bytes
+        if isinstance(message, str):
+            message_bytes = message.encode()
+        else:
+            message_bytes = message
+
+        iv = os.urandom(16)  # Initialization vector
+        cipher = Cipher(algorithms.AES(session_key), modes.CFB(iv))
+        encryptor = cipher.encryptor()
+        ciphertext = encryptor.update(message_bytes) + encryptor.finalize()
+        return iv + ciphertext
 # Example Usage:
 # encryption_manager = EncryptionManager()
 # encryption_manager.generate_keys()

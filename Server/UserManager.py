@@ -1,29 +1,62 @@
-"""
-UserManager.py
+import sqlite3
+import hashlib
+import os
+import uuid
 
-Manages user registration, authentication, and session handling.
+class UserManager:
+    def __init__(self, db_path="../users.db"):
+        """Initialize the user manager and database connection."""
+        self.db_path = db_path
+        self.active_sessions = {}  # {session_token: username}
+        self.connect_db()
+        self.create_users_table()
+    
+    def connect_db(self):
+        """Establish a connection to the database."""
+        self.conn = sqlite3.connect(self.db_path)
+        self.cursor = self.conn.cursor()
+    
+    def create_users_table(self):
+        """Ensure the users table exists."""
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY,
+                password_hash TEXT
+            )
+        """
+        )
+        self.conn.commit()
+    
+    def register_user(self, username, password):
+        """Register a new user with a hashed password."""
+        self.cursor.execute("SELECT username FROM users WHERE username = ?", (username,))
+        if self.cursor.fetchone():
+            return False, "Username already exists."
+        
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        self.cursor.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, password_hash))
+        self.conn.commit()
+        return True, "User registered successfully."
+    
+    def authenticate_user(self, username, password):
+        """Validate user credentials and return a session token."""
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        self.cursor.execute("SELECT username FROM users WHERE username = ? AND password_hash = ?", (username, password_hash))
+        if self.cursor.fetchone():
+            session_token = str(uuid.uuid4())
+            self.active_sessions[session_token] = username
+            return True, session_token
+        return False, "Invalid username or password."
+    
+    def validate_session(self, token):
+        """Check if a session token is valid."""
+        return token in self.active_sessions
+    
+    def close_db(self):
+        """Close the database connection."""
+        self.conn.close()
 
-Responsibilities:
-1. Register new users:
-   - Ensure usernames are unique.
-   - Hash and securely store passwords.
-2. Authenticate users:
-   - Validate credentials during login.
-   - Return session tokens for authenticated users.
-3. Manage session tokens:
-   - Generate and verify session tokens for active users.
-
-Key Classes:
-- UserManager: Handles user-related operations like registration, login, and session validation.
-
-Key Functions:
-- register_user(username, password): Add a new user to the database with a hashed password.
-- authenticate_user(username, password): Validate login credentials and generate a session token.
-- validate_session(token): Check if a session token is valid.
-- load_user_data(): Load existing user data from the database.
-- save_user_data(): Save updated user data back to the database.
-
-Key Variables:
-- db_connection: The database connection object for storing and retrieving user data.
-- active_sessions: A dictionary mapping session tokens to user information.
-"""
+# Example Usage:
+user_manager = UserManager()
+print(user_manager.register_user("user1", "securepass"))
+print(user_manager.authenticate_user("user1", "securepass"))
