@@ -4,6 +4,8 @@ import time
 import json
 import os
 import sys
+import random
+from shutil import get_terminal_size
 
 class ChatClient:
    def __init__(self):
@@ -13,59 +15,112 @@ class ChatClient:
       self.current_chat = None
       self.running = True
       self.user_id = None
+      self.action_history = []  # Store recent actions/messages
+      
+   def add_to_history(self, message):
+      """Add a message to action history, keeping only last 3."""
+      self.action_history.append(message)
+      if len(self.action_history) > 3:
+         self.action_history.pop(0)
       
    def display_menu(self):
       """Display the main menu options."""
-      print("\n=== InteChat Menu ===")
+      display_menu_header()
+      
+      # Display recent action history
+      if self.action_history:
+         print("\nRecent Actions:")
+         for action in self.action_history:
+            print(f"  → {action}")
+         print("\n" + "=" * get_terminal_size().columns + "\n")
+            
       if not self.session_token:
-         print("1. Register")
-         print("2. Login")
-         print("3. Exit")
+         options = [
+            "1. Register",
+            "2. Login",
+            "3. Exit"
+         ]
       else:
-         print("1. Create new chat")
-         print("2. List chats")
-         print("3. Join chat")
-         print("4. Logout")
-         print("5. Exit")
-      return input("Choose an option: ")
+         options = [
+            "1. Create new chat",
+            "2. List chats",
+            "3. Join chat",
+            "4. Logout",
+            "5. Exit"
+         ]
+            
+      # Center and display options
+      padding = get_center_padding(max(len(opt) for opt in options))
+      for option in options:
+         print(" " * padding + option)
+            
+      print("\n" + "=" * get_terminal_size().columns)
+      choice = input("\nChoose an option: ")
+        
+      # Handle invalid input immediately
+      if not self.session_token and choice not in ["1", "2", "3"]:
+         self.add_to_history(f"Invalid option '{choice}' selected")
+         return choice
+      elif self.session_token and choice not in ["1", "2", "3", "4", "5"]:
+         self.add_to_history(f"Invalid option '{choice}' selected")
+         return choice
+            
+      return choice
 
    def start(self):
       """Start the chat client."""
       try:
+         clear_screen()
+         
+         # Initial splash screen
+         logo_path = os.path.join(os.path.dirname(__file__), 'assets', 'LogoBanner.txt')
+         logo_banner = read_file_content(logo_path)
+         display_centered_banner(logo_banner)
+         print("\n" * 2)
+         title_banner = get_random_title_banner()
+         display_centered_banner(title_banner)
+         
+         # Keep splash screen for 3 seconds
+         time.sleep(3)
+         
          if not self.client.connect():
                print("Failed to connect to server.")
                return
 
-         print("Connected to chat server!")
+         self.add_to_history("Connected to chat server!")
+         time.sleep(0.5)
+         clear_screen()
+         
+         # Store a title banner to use consistently
+         self.menu_title_banner = get_random_title_banner()
          
          while self.running:
-               choice = self.display_menu()
-               
-               if not self.session_token:
-                  # Not logged in menu
-                  if choice == "1":
-                     self.handle_registration()
-                  elif choice == "2":
-                     self.handle_login()
-                  elif choice == "3":
-                     self.running = False
-                  else:
-                     print("Invalid choice!")
-               else:
-                  # Logged in menu
-                  if choice == "1":
-                     self.handle_create_chat()
-                  elif choice == "2":
-                     self.list_chats()
-                  elif choice == "3":
-                     self.handle_join_chat()
-                  elif choice == "4":
-                     self.handle_logout()
-                  elif choice == "5":
-                     self.running = False
-                  else:
-                     print("Invalid choice!")
-                     
+            clear_screen()
+            print("\n")
+            display_centered_banner(self.menu_title_banner)
+            choice = self.display_menu()
+            
+            if not self.session_token:
+               # Not logged in menu
+               if choice == "1":
+                  self.handle_registration()
+               elif choice == "2":
+                  self.handle_login()
+               elif choice == "3":
+                  self.running = False
+            else:
+               # Logged in menu
+               if choice == "1":
+                  self.handle_create_chat()
+               elif choice == "2":
+                  self.list_chats()
+               elif choice == "3":
+                  self.handle_join_chat()
+               elif choice == "4":
+                  self.handle_logout()
+               elif choice == "5":
+                  self.running = False
+                        
       except KeyboardInterrupt:
          print("\nShutting down...")
       finally:
@@ -81,15 +136,15 @@ class ChatClient:
          response = self.client.get_next_response()
          
          if response:
-               if response.get('success'):
-                  print("Registration successful!")
-               else:
-                  print(f"Registration failed: {response.get('message', 'Unknown error')}")
+            if response.get('success'):
+                  self.add_to_history(f"Successfully registered user: {username}")
+            else:
+                  self.add_to_history(f"Registration failed: {response.get('message', 'Unknown error')}")
          else:
-               print("No response received from server")
-               
+            self.add_to_history("No response received from server")
+            
       except Exception as e:
-         print(f"Error during registration: {e}")
+         self.add_to_history(f"Error during registration: {e}")
 
    def handle_login(self):
       """Handle user login."""
@@ -97,24 +152,20 @@ class ChatClient:
          username = input("Enter username: ")
          password = input("Enter password: ")
          
-         # Send login request
          self.client.send_login_request(username, password)
-         
-         # Wait for and process response
          response = self.client.get_next_response()
-         print(f"Debug: Received login response: {response}")  # Debug print
          
          if response:
-               if response.get('success'):
+            if response.get('success'):
                   self.session_token = response.get('token')
-                  print("Login successful!")
-               else:
-                  print(f"Login failed: {response.get('message', 'Unknown error')}")
+                  self.add_to_history(f"Successfully logged in as: {username}")
+            else:
+                  self.add_to_history(f"Login failed: {response.get('message', 'Unknown error')}")
          else:
-               print("No response received from server")
-               
+            self.add_to_history("No response received from server")
+            
       except Exception as e:
-         print(f"Error during login: {e}")
+         self.add_to_history(f"Error during login: {e}")
          
    def handle_create_chat(self):
       """Handle chat creation."""
@@ -252,6 +303,51 @@ class ChatClient:
          self.handle_logout()
       if hasattr(self, 'client'):
          self.client.disconnect()
+
+def clear_screen():
+    """Clear the terminal screen."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def get_center_padding(text_width):
+    """Get padding needed to center text."""
+    terminal_width = get_terminal_size().columns
+    return max(0, (terminal_width - text_width) // 2)
+
+def read_file_content(filepath):
+    """Read and return file content."""
+    try:
+        with open(filepath, 'r') as file:
+            return file.read()
+    except Exception as e:
+        print(f"Error reading file {filepath}: {e}")
+        return ""
+
+def display_centered_banner(banner_text):
+    """Display banner text centered on screen."""
+    lines = banner_text.split('\n')
+    max_width = max(len(line) for line in lines)
+    padding = get_center_padding(max_width)
+    
+    for line in lines:
+        print(' ' * padding + line)
+
+def get_random_title_banner():
+    """Get a random title banner from the TitleBanners folder."""
+    banner_dir = os.path.join(os.path.dirname(__file__), 'assets', 'TitleBanners')
+    banner_files = [f for f in os.listdir(banner_dir) if f.startswith('TitleBanner')]
+    if banner_files:
+        chosen_banner = random.choice(banner_files)
+        return read_file_content(os.path.join(banner_dir, chosen_banner))
+    return ""
+
+def display_menu_header():
+    """Display the menu header with decorative elements."""
+    terminal_width = get_terminal_size().columns
+    print("\n" + "=" * terminal_width)
+    padding = get_center_padding(len("InteChat Menu"))
+    print(" " * padding + "InteChat Menu")
+    print("=" * terminal_width + "\n")
+
 
 if __name__ == "__main__":
     client = ChatClient()
