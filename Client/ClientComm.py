@@ -208,8 +208,14 @@ class ClientComm:
             return None
             
         response = self.response_queue.pop(0)
-        return response.get('data')
-
+        print(f"Debug - Raw response from queue: {response}")  # Debug print
+        
+        # Get the data part of the response
+        response_data = response.get('data')
+        if not response_data:
+            return None
+            
+        return response_data
 
 # Test Cases
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import random
+import re
 from shutil import get_terminal_size
 
 class ChatClient:
@@ -126,23 +127,67 @@ class ChatClient:
       finally:
          self.cleanup()
 
+   def validate_username(self, username):
+      """Client-side username validation."""
+      
+      if len(username) < 4:
+         return False, "Username is too short (minimum 4 characters)"
+      if len(username) > 20:
+         return False, "Username is too long (maximum 20 characters)"
+      if not re.match(r'^[a-zA-Z0-9!@#$%]+$', username):
+         return False, "Username can only contain English letters, numbers, and special characters (!@#$%)"
+      
+      return True, "Username is valid"
+
+   def validate_password(self, password):
+      """Client-side password validation."""
+      
+      if len(password) < 8:
+         return False, "Password is too short (minimum 8 characters)"
+      if len(password) > 100:
+         return False, "Password is too long (maximum 100 characters)"
+      if not re.match(r'^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};:,.<>?]+$', password):
+         return False, "Password can only contain English letters, numbers, and special characters"
+      
+      return True, "Password is valid"
+
+
    def handle_registration(self):
-      """Handle user registration."""
+      """Handle user registration with validation."""
       try:
-         username = input("Enter username: ")
-         password = input("Enter password: ")
+         while True:
+            username = input("Enter username (4-20 characters, letters, numbers, !@#$%): ")
+            is_valid, message = self.validate_username(username)
+            if not is_valid:
+               self.add_to_history(message)
+               continue
+               
+            password = input("Enter password (8-100 characters, letters, numbers, special characters): ")
+            is_valid, message = self.validate_password(password)
+            if not is_valid:
+               self.add_to_history(message)
+               continue
+               
+            break
          
          self.client.send_register_request(username, password)
          response = self.client.get_next_response()
          
+         # Debug print to see exact response
+         print(f"Debug - Registration response: {response}")
+         
          if response:
-            if response.get('success'):
-                  self.add_to_history(f"Successfully registered user: {username}")
+            success = response.get('success', False)
+            message = response.get('message', 'Unknown error')
+            
+            if success:
+               self.add_to_history(f"Successfully registered user: {username}")
             else:
-                  self.add_to_history(f"Registration failed: {response.get('message', 'Unknown error')}")
+               self.add_to_history(f"Registration failed: {message}")
+               return  # Exit the function if registration failed
          else:
             self.add_to_history("No response received from server")
-            
+               
       except Exception as e:
          self.add_to_history(f"Error during registration: {e}")
 
@@ -288,14 +333,18 @@ class ChatClient:
          print(f"Error handling message: {e}")
 
    def handle_logout(self):
-      """Handle user logout."""
+      """Handle user logout and reset client state."""
       if self.session_token:
          self.client.send_request("disconnect", {
-               "token": self.session_token
+            "token": self.session_token
          })
+         
+         # Reset ALL client state
          self.session_token = None
          self.current_chat = None
-         print("Logged out successfully!")
+         self.client = ClientComm()  # Create fresh client instance
+         self.client.connect()  # Reconnect with fresh state
+         self.add_to_history("Successfully logged out")
 
    def cleanup(self):
       """Clean up resources."""

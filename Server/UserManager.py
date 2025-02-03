@@ -4,6 +4,7 @@ import secrets
 from datetime import datetime
 import time
 import os
+import re
 
 class UserManager:
     def __init__(self, db_path="./server/storage/chat_database.db"):
@@ -94,41 +95,85 @@ class UserManager:
             print(f"Error creating tables: {e}")
             raise
 
+    def validate_username(self, username):
+        """
+        Validate username according to rules:
+        - Length between 4 and 20 characters
+        - Only English letters, numbers, and special characters
+        """
+        
+        # Check length
+        if len(username) < 4 or len(username) > 20:
+            return False, "Username must be between 4 and 20 characters"
+            
+        # Check characters using regex
+        if not re.match(r'^[a-zA-Z0-9!@#$%]+$', username):
+            return False, "Username can only contain English letters, numbers, and special characters (!@#$%)"
+        
+        return True, "Username is valid"
+
+    def validate_password(self, password):
+        """
+        Validate password according to rules:
+        - Length between 8 and 100 characters
+        - Only English letters, numbers, and special characters
+        """
+        
+        # Check length
+        if len(password) < 8 or len(password) > 100:
+            return False, "Password must be between 8 and 100 characters"
+            
+        # Check characters using regex
+        if not re.match(r'^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};:,.<>?]+$', password):
+            return False, "Password can only contain English letters, numbers, and special characters"
+        
+        return True, "Password is valid"
+
     def register_user(self, username, password):
-        """Register a new user."""
+        """Register a new user with validation."""
         try:
             cursor = self.conn.cursor()
             
-            # Check if username already exists
-            cursor.execute('SELECT 1 FROM users WHERE username = ?', (username,))
+            # Validate username
+            is_valid, message = self.validate_username(username)
+            if not is_valid:
+                return False, message
+                
+            # Validate password
+            is_valid, message = self.validate_password(password)
+            if not is_valid:
+                return False, message
+            
+            # Check if username already exists (case insensitive)
+            cursor.execute('SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)', (username,))
             if cursor.fetchone():
                 return False, "Username already exists"
             
             # Hash the password
             salt = bcrypt.gensalt()
-            password_bytes = password.encode()
-            password_hash = bcrypt.hashpw(password_bytes, salt)  # Already returns a string
+            password_hash = bcrypt.hashpw(password.encode(), salt)
             
-            # Insert new user
+            # Insert new user (with original case)
             cursor.execute(
                 'INSERT INTO users (username, password_hash) VALUES (?, ?)',
-                (username, password_hash)  # Use hash directly, no decode needed
+                (username, password_hash)
             )
             self.conn.commit()
             
             return True, "User registered successfully"
-        except Exception as e:
+            
+        except sqlite3.Error as e:
             self.conn.rollback()
             return False, f"Database error: {str(e)}"
-            
+
     def authenticate_user(self, username, password):
         """Authenticate a user and return a session token."""
         try:
             cursor = self.conn.cursor()
             
-            # Get user data
+            # Get user data (case insensitive username match)
             cursor.execute(
-                'SELECT user_id, password_hash FROM users WHERE username = ?',
+                'SELECT user_id, username, password_hash FROM users WHERE LOWER(username) = LOWER(?)',
                 (username,)
             )
             user = cursor.fetchone()
@@ -136,7 +181,7 @@ class UserManager:
             if not user:
                 return False, "Invalid username or password", None
             
-            # Verify password (password_hash is already a string)
+            # Verify password
             if not bcrypt.checkpw(password.encode(), user['password_hash'].encode()):
                 return False, "Invalid username or password", None
             
