@@ -75,6 +75,7 @@ class ServerConnection:
             self.public_key = None
             self.session_established = False
             self.last_activity = time.time()
+            self.user_id = None  # Store user_id after login
     
     def load_config(self, config_path):
         """Load server IP and port from config.json."""
@@ -153,14 +154,21 @@ class ServerConnection:
                     message_type = data.get('type')
                     print(f"Received message type: {message_type} from {client_info.address}")
                     
-                    if message_type in ['register', 'login', 'create_chat', 'send_message', 
-                                    'get_chats', 'get_messages', 'disconnect']:
+                    if message_type in self.handlers:
                         # Process the request
                         response = self.process_request(message_type, client_socket, data.get('data', {}))
                         # Send response back to client
                         self.send_to_client(client_socket, response)
                     else:
                         print(f"Unknown message type: {message_type}")
+                        response = {
+                            "type": "error_response",
+                            "data": {
+                                "success": False,
+                                "message": f"Unknown message type: {message_type}"
+                            }
+                        }
+                        self.send_to_client(client_socket, response)
 
                 client_info.last_activity = time.time()
                 
@@ -217,30 +225,6 @@ class ServerConnection:
         
         return True
     
-    def _handle_client_message(self, client_socket, data):
-        """Handle messages from an authenticated client."""
-        client_info = self.connected_clients[client_socket]
-        
-        try:
-            if data["type"] == "send_message":
-                # Decrypt the message
-                encrypted_message = bytes.fromhex(data["data"]["message"])
-                decrypted_message = self.encryption.decrypt_message(
-                    encrypted_message, 
-                    client_info.client_id
-                )
-                print(f"Message from {client_info.address}: {decrypted_message}")
-                
-                # Message received - in actual chat app, this is where 
-                # we would handle message routing to other clients
-                
-            elif data["type"] == "disconnect":
-                raise ConnectionError("Client requested disconnect")
-                
-        except Exception as e:
-            print(f"Error handling message: {str(e)}")
-            raise
-        
     def send_to_client(self, client_socket, data):
         """Send data to a specific client."""
         try:
@@ -294,7 +278,16 @@ class ServerConnection:
             self.accept_thread.join(timeout=2.0)
         
         print("Server stopped.")
-        
+
+    def broadcast_to_users(self, user_ids, message):
+        """Broadcast a message to specific users."""
+        for client_socket, client_info in self.connected_clients.items():
+            if client_info.user_id in user_ids:
+                try:
+                    self.send_to_client(client_socket, message)
+                except Exception as e:
+                    print(f"Error broadcasting to user {client_info.user_id}: {e}")
+
 # Test Cases
 if __name__ == "__main__":
     print("\nStarting server for testing...")

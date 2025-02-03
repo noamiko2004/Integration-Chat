@@ -103,7 +103,8 @@ class MessageHandler:
             if not self._verify_chat_membership(chat_id, user_id):
                 return False, "User is not a member of this chat"
 
-            # Get messages using UserManager
+            # Get messages using UserManager with a reasonable limit
+            limit = min(50, limit)  # Cap at 50 messages
             success, messages = self.user_manager.get_chat_messages(chat_id, user_id, limit)
             
             if not success:
@@ -114,12 +115,12 @@ class MessageHandler:
             for msg in messages:
                 formatted_messages.append({
                     'message_id': msg['message_id'],
-                    'sender_id': msg['sender_id'],
+                    'username': msg.get('username', 'Unknown'),  # Add default value
                     'content': msg['message_content'],
                     'timestamp': msg['timestamp']
                 })
 
-            return True, formatted_messages
+            return True, formatted_messages[-50:]  # Return only the last 50 messages
 
         except Exception as e:
             return False, f"Error fetching chat history: {str(e)}"

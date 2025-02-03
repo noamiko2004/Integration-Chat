@@ -2,6 +2,7 @@ import socket
 import json
 import threading
 import time
+from datetime import datetime
 from Encryption import EncryptionManager
 
 class ClientComm:
@@ -110,7 +111,9 @@ class ClientComm:
     def send_request(self, request_type, data):
         """Send a formatted request to the server."""
         if not self.is_connected:
-            raise ConnectionError("Not connected to server")
+            # Try to reconnect once
+            if not self.reconnect():
+                raise ConnectionError("Not connected to server")
         
         try:
             request = {
@@ -122,6 +125,16 @@ class ClientComm:
         except Exception as e:
             self.is_connected = False
             raise RuntimeError(f"Failed to send request: {str(e)}")
+    
+    def reconnect(self):
+        """Attempt to reconnect to the server."""
+        try:
+            print("Attempting to reconnect to server...")
+            self.disconnect()  # Clean up old connection
+            return self.connect()
+        except Exception as e:
+            print(f"Reconnection failed: {e}")
+            return False
 
     def receive_response(self):
         """Wait for and handle the server's response."""
@@ -133,11 +146,15 @@ class ClientComm:
             self.is_connected = False
             raise RuntimeError(f"Failed to receive response: {str(e)}")
             
-    def send_message(self, message):
-        """Encrypt and send a message object to the server."""
+    def send_message(self, message_data):
+        """Send a message object to the server."""
         try:
-            encrypted_message = self.encryption.encrypt_message(message)
-            self.send_request("send_message", {"message": encrypted_message.hex()})
+            # Ensure message has timestamp
+            if isinstance(message_data, dict):
+                if 'timestamp' not in message_data:
+                    message_data['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            self.send_request("send_message", message_data)
             return True
         except Exception as e:
             print(f"Failed to send message: {str(e)}")
@@ -152,19 +169,29 @@ class ClientComm:
                     continue
 
                 response = json.loads(data)
-                print(f"Debug: Received in loop: {response}")  # Debug print
+                print(f"DEBUG: Received in loop: {response}")
                 
-                # Handle regular chat messages
                 if response.get("type") == "new_message":
-                    if self.message_callback:
-                        self.message_callback(response.get("data"))
+                    print("DEBUG: Got new message in receive loop")
+                    message_data = response.get("data", {})
+                    
+                    # Ensure message has proper format
+                    if message_data and isinstance(message_data, dict):
+                        # Add timestamp if not present
+                        if 'timestamp' not in message_data:
+                            message_data['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        if self.message_callback:
+                            self.message_callback(response)
                 else:
                     # Store response for the main thread
-                    print(f"Debug: Adding to queue: {response}")  # Debug print
+                    print(f"DEBUG: Adding to queue: {response}")
                     self.response_queue.append(response)
                         
             except Exception as e:
-                print(f"Error in receive loop: {str(e)}")
+                print(f"Error in receive loop: {e}")
+                import traceback
+                traceback.print_exc()
                 self.is_connected = False
                 break
             
@@ -200,22 +227,25 @@ class ClientComm:
         })
 
     def get_next_response(self):
-        """Get the next response from the queue."""
-        while self.is_connected and not self.response_queue:
+        """Get the next response from the queue with timeout."""
+        start_time = time.time()
+        timeout = 5.0  # 5 second timeout
+        
+        while self.is_connected and not self.response_queue and (time.time() - start_time) < timeout:
             time.sleep(0.1)  # Wait for response
             
         if not self.response_queue:
+            if not self.is_connected:
+                raise ConnectionError("Not connected to server")
             return None
             
         response = self.response_queue.pop(0)
         print(f"Debug - Raw response from queue: {response}")  # Debug print
         
-        # Get the data part of the response
-        response_data = response.get('data')
-        if not response_data:
-            return None
-            
-        return response_data
+        # Get the data part of the response with safer handling
+        if isinstance(response, dict):
+            return response.get('data', {})
+        return {}
 
 # Test Cases
 if __name__ == "__main__":

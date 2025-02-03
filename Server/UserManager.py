@@ -324,6 +324,97 @@ class UserManager:
         if self.conn:
             self.conn.close()
 
+    def get_user_by_username(self, username):
+        """Get user info by username."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                'SELECT user_id, username, created_at FROM users WHERE LOWER(username) = LOWER(?)',
+                (username,)
+            )
+            return cursor.fetchone()
+        except sqlite3.Error:
+            return None
+
+    def get_or_create_private_chat(self, user1_id, user2_id):
+        """Get existing private chat between users or create new one."""
+        try:
+            cursor = self.conn.cursor()
+            
+            # Check if private chat already exists
+            cursor.execute('''
+                SELECT c.chat_id
+                FROM chats c
+                JOIN chat_members cm1 ON c.chat_id = cm1.chat_id
+                JOIN chat_members cm2 ON c.chat_id = cm2.chat_id
+                WHERE c.chat_type = 'private'
+                AND cm1.user_id = ?
+                AND cm2.user_id = ?
+                AND (
+                    SELECT COUNT(*) FROM chat_members 
+                    WHERE chat_id = c.chat_id
+                ) = 2
+            ''', (user1_id, user2_id))
+            
+            result = cursor.fetchone()
+            if result:
+                return result['chat_id']
+                
+            # Create new private chat
+            success, chat_id = self.create_chat([user1_id, user2_id], 'private')
+            if success:
+                return chat_id
+            return None
+                
+        except sqlite3.Error:
+            return None
+
+    def get_formatted_chat_messages(self, chat_id, limit=50):
+        """Get messages with sender usernames and formatted timestamps."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT 
+                    m.message_id,
+                    m.message_content,
+                    m.timestamp,
+                    u.username as sender_username
+                FROM messages m
+                JOIN users u ON m.sender_id = u.user_id
+                WHERE m.chat_id = ?
+                ORDER BY m.timestamp DESC
+                LIMIT ?
+            ''', (chat_id, limit))
+            
+            return cursor.fetchall()
+        except sqlite3.Error:
+            return []
+        
+    def get_user_by_id(self, user_id):
+        """Get user info by ID."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                'SELECT user_id, username, created_at FROM users WHERE user_id = ?',
+                (user_id,)
+            )
+            return cursor.fetchone()
+        except sqlite3.Error:
+            return None
+
+    def get_chat_members(self, chat_id):
+        """Get all member IDs for a chat."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                'SELECT user_id FROM chat_members WHERE chat_id = ?',
+                (chat_id,)
+            )
+            return [row['user_id'] for row in cursor.fetchall()]
+        except sqlite3.Error:
+            return []
+
+
 # Example usage and testing
 if __name__ == "__main__":
     # Create UserManager instance
