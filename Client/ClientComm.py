@@ -238,7 +238,7 @@ class ClientComm:
                         break
                         
             except Exception as e:
-                print(f"Error in receive loop: {e}")
+                # print(f"Error in receive loop: {e}")
                 self.is_connected = False
                 break
 
@@ -249,7 +249,7 @@ class ClientComm:
                 self._receive_message()
             except Exception as e:
                 if not self.shutting_down:
-                    print(f"Error in receive loop: {e}")
+                    # print(f"Error in receive loop: {e}")
                     self.is_connected = False
                 break
             

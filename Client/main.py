@@ -27,8 +27,6 @@ class ChatClient:
    
    def display_chat_messages(self, preserve_input=True):
       """Display all messages in the current chat."""
-      print("DEBUG: Displaying messages, count:", len(self.current_messages))
-      
       # Store cursor position and current input if needed
       current_input = None
       if preserve_input and self.chat_input:
@@ -38,22 +36,19 @@ class ChatClient:
       print(f"\n=== Chat with {self.chat_target} ===")
       print("=" * 50)
       
-      # Sort messages with safer handling of None values
+      # Sort messages
       def sort_key(msg):
          try:
-            # Use a default timestamp if none exists
             timestamp = msg.get('timestamp', '1970-01-01 00:00:00')
             if not isinstance(timestamp, str):
                timestamp = '1970-01-01 00:00:00'
             
-            # Use -inf for missing message_ids to ensure they appear first
             msg_id = msg.get('message_id')
             if msg_id is None:
                msg_id = float('-inf')
             
             return (datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S"), msg_id)
          except (ValueError, TypeError):
-            # If anything goes wrong, return the earliest possible date
             return (datetime.min, float('-inf'))
       
       sorted_messages = sorted(self.current_messages, key=sort_key)
@@ -91,9 +86,9 @@ class ChatClient:
       if self.action_history:
          print("\nRecent Actions:")
          for action in self.action_history:
-            print(f"  → {action}")
+               print(f"  → {action}")
          print("\n" + "=" * get_terminal_size().columns + "\n")
-            
+               
       if not self.session_token:
          options = [
             "1. Register",
@@ -102,31 +97,28 @@ class ChatClient:
          ]
       else:
          options = [
-            "1. Start Private Chat",
-            "2. Join Group Chat",
-            "3. Create Group Chat",
-            "4. List Active Chats",
-            "5. Logout",
-            "6. Exit"
+            "1. Start Chat",
+            "2. List Active Chats",
+            "3. Logout",
+            "4. Exit"
          ]
-
-            
+               
       # Center and display options
       padding = get_center_padding(max(len(opt) for opt in options))
       for option in options:
          print(" " * padding + option)
-            
+               
       print("\n" + "=" * get_terminal_size().columns)
       choice = input("\nChoose an option: ")
-        
+      
       # Handle invalid input immediately
       if not self.session_token and choice not in ["1", "2", "3"]:
          self.add_to_history(f"Invalid option '{choice}' selected")
          return choice
-      elif self.session_token and choice not in ["1", "2", "3", "4", "5"]:
+      elif self.session_token and choice not in ["1", "2", "3", "4"]:
          self.add_to_history(f"Invalid option '{choice}' selected")
          return choice
-            
+               
       return choice
 
    def start(self):
@@ -228,7 +220,7 @@ class ChatClient:
          response = self.client.get_next_response()
          
          # Debug print to see exact response
-         print(f"Debug - Registration response: {response}")
+         # print(f"Debug - Registration response: {response}")
          
          if response:
             success = response.get('success', False)
@@ -290,26 +282,72 @@ class ChatClient:
          print(f"Failed to create chat: {response.get('message', 'Unknown error')}")
 
    def list_chats(self):
-      """List all user's chats."""
-      self.client.send_request("get_chats", {
-         "token": self.session_token
-      })
-      
-      response = self.client.receive_response()
-      if response.get("success"):
+      """List all user's active chats."""
+      try:
+         self.client.send_request("get_chats", {
+            "token": self.session_token
+         })
+         
+         response = self.client.get_next_response()
+         
+         if not response:
+            self.add_to_history("No response received from server")
+            return
+
+         if not response.get('success'):
+            self.add_to_history(f"Failed to get chats: {response.get('message', 'Unknown error')}")
+            return
+
          chats = response.get("chats", [])
          if not chats:
-               print("No active chats.")
-               return
-               
-         print("\n=== Your Chats ===")
+            self.add_to_history("No active chats")
+            return
+
+         # Clear screen and show header
+         clear_screen()
+         terminal_width = get_terminal_size().columns
+         print("\n" + "=" * terminal_width)
+         print(f"{'Active Chats':^{terminal_width}}")
+         print("=" * terminal_width + "\n")
+
+         # Display each chat
          for chat in chats:
-               print(f"Chat ID: {chat['chat_id']}")
-               print(f"Type: {chat['chat_type']}")
-               print(f"Participants: {', '.join(str(p) for p in chat['participants'])}")
-               print("-" * 20)
-      else:
-         print(f"Failed to get chats: {response.get('message', 'Unknown error')}")
+            chat_id = chat.get('chat_id', 'Unknown')
+            participants = chat.get('participants', [])
+            last_message = chat.get('last_message', {})
+            
+            # Format participant list
+            participant_str = ', '.join(participants) if participants else 'No participants'
+            
+            print(f"┌{'─' * (terminal_width-2)}┐")
+            print(f"│ Chat ID: {chat_id:<{terminal_width-12}}│")
+            
+            # Split long participant lists across multiple lines if needed
+            max_line_length = terminal_width - 16
+            if len(participant_str) > max_line_length:
+               print(f"│ Participants:│")
+               remaining = participant_str
+               while remaining:
+                  line = remaining[:max_line_length]
+                  remaining = remaining[max_line_length:]
+                  print(f"│    {line:<{terminal_width-6}}│")
+            else:
+               print(f"│ Participants: {participant_str:<{terminal_width-16}}│")
+            
+            # Show last message if available
+            if last_message:
+               last_msg_time = last_message.get('timestamp', 'Unknown time')
+               last_msg_user = last_message.get('username', 'Unknown user')
+               last_msg_content = last_message.get('content', '')
+               print(f"│ Last Message: [{last_msg_time}] {last_msg_user}: {last_msg_content:<{terminal_width-50}}│")
+            
+            print(f"└{'─' * (terminal_width-2)}┘\n")
+
+         print("=" * terminal_width)
+         input("Press Enter to continue...")
+
+      except Exception as e:
+         self.add_to_history(f"Error listing chats: {str(e)}")
 
    def handle_join_chat(self):
       """Handle joining a chat."""
@@ -343,19 +381,19 @@ class ChatClient:
    def chat_loop(self):
       """Handle sending and receiving messages in a chat."""
       try:
-         print("DEBUG: Entering chat loop")
+         # print("DEBUG: Entering chat loop")
          
          while self.current_chat:
             message = input("")  # Empty prompt since display_chat_messages shows it
             
             if message.lower() == '/exit':
-               print("DEBUG: Exiting chat")
+               # print("DEBUG: Exiting chat")
                self.cleanup_chat()
                clear_screen()
                break
             
             if message:
-               print("DEBUG: Sending message to server")
+               # print("DEBUG: Sending message to server")
                # Prepare message data
                message_data = {
                   "token": self.session_token,
@@ -376,19 +414,19 @@ class ChatClient:
                   self.current_messages.append(new_msg)
                   self.display_chat_messages()
                      
-         print("DEBUG: Chat loop ended")
+         # print("DEBUG: Chat loop ended")
       except KeyboardInterrupt:
-         print("DEBUG: Chat interrupted")
+         # print("DEBUG: Chat interrupted")
          self.cleanup_chat()
          clear_screen()
       except Exception as e:
-         print(f"DEBUG: Error in chat loop: {str(e)}")
+         # print(f"DEBUG: Error in chat loop: {str(e)}")
          self.cleanup_chat()
          clear_screen()
 
    def cleanup_chat(self):
       """Clean up chat-related state."""
-      print("DEBUG: Cleaning up chat state")
+      # print("DEBUG: Cleaning up chat state")
       self.current_chat = None
       self.chat_target = None
       self.current_messages = []
@@ -400,7 +438,7 @@ class ChatClient:
       if hasattr(self.client, 'receive_buffer'):
          self.client.receive_buffer = ""
       
-      print("DEBUG: Chat cleanup complete")
+      # print("DEBUG: Chat cleanup complete")
 
 
    def handle_menu_choice(self, choice):
@@ -409,14 +447,10 @@ class ChatClient:
          if choice == "1":
             self.handle_private_chat()
          elif choice == "2":
-            print("Group chat functionality coming soon!")
-         elif choice == "3":
-            print("Group creation functionality coming soon!")
-         elif choice == "4":
             self.list_chats()
-         elif choice == "5":
+         elif choice == "3":
             self.handle_logout()
-         elif choice == "6":
+         elif choice == "4":
             self.running = False
          else:
             self.add_to_history(f"Invalid option '{choice}' selected")
@@ -427,19 +461,11 @@ class ChatClient:
    def handle_incoming_message(self, message):
       """Handle incoming real-time messages."""
       try:
-         print("DEBUG: Handling incoming message:", message)
          if isinstance(message, dict):
-            print("DEBUG: Message is dict")
-            
-            # Extract the actual message data
             msg_data = message.get('data', {})
             chat_id = msg_data.get('chat_id')
             
-            print(f"DEBUG: Message chat_id: {chat_id}, current_chat: {self.current_chat}")
-            
             if chat_id == self.current_chat:
-               print("DEBUG: Message is for current chat")
-               # Ensure message has all required fields
                new_msg = {
                   'message_id': msg_data.get('message_id'),
                   'timestamp': msg_data.get('timestamp', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
@@ -455,12 +481,8 @@ class ChatClient:
                )
                
                if not exists:
-                  print("DEBUG: Adding new message:", new_msg)
                   self.current_messages.append(new_msg)
-                  print("DEBUG: Messages now:", len(self.current_messages))
                   self.display_chat_messages()
-               else:
-                  print("DEBUG: Message already exists, skipping")
                      
       except Exception as e:
          print(f"Error handling message: {e}")
@@ -493,71 +515,55 @@ class ChatClient:
       """Handle starting a private chat with another user."""
       try:
          target_username = input("Enter username to chat with: ")
-         print(f"DEBUG: Starting chat with {target_username}")
          
-         # Request chat session with user
          try:
-               print("DEBUG: Sending chat request to server")
-               self.client.send_request("start_private_chat", {
-                  "token": self.session_token,
-                  "target_username": target_username
-               })
+            self.client.send_request("start_private_chat", {
+               "token": self.session_token,
+               "target_username": target_username
+            })
          except ConnectionError:
-               self.add_to_history("Lost connection to server. Please try logging in again.")
-               self.session_token = None
-               return
+            self.add_to_history("Lost connection to server. Please try logging in again.")
+            self.session_token = None
+            return
                
-         print("DEBUG: Waiting for server response")
          response = self.client.get_next_response()
-         print(f"DEBUG: Got chat response: {response}")
          
          if not response:
-               self.add_to_history("No response from server. Please try again.")
-               return
+            self.add_to_history("No response from server. Please try again.")
+            return
                
          if not response.get('success'):
-               self.add_to_history(response.get('message', 'Failed to start chat'))
-               return
+            self.add_to_history(response.get('message', 'Failed to start chat'))
+            return
                
          # Store chat info
          self.current_chat = response.get('chat_id')
          self.chat_target = response.get('target_username')
          messages = response.get('messages', [])
          
-         print(f"DEBUG: Chat established - ID: {self.current_chat}, Target: {self.chat_target}")
-         print(f"DEBUG: Received {len(messages)} messages")
-         
          # Reset current messages before adding new ones
          self.current_messages = []
          
-         # Validate messages before storing
+         # Process received messages
          for msg in messages:
-               if isinstance(msg, dict):
-                  # Ensure all required fields have default values
-                  validated_msg = {
-                     'message_id': msg.get('message_id'),
-                     'timestamp': msg.get('timestamp', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-                     'username': msg.get('username', 'Unknown'),
-                     'content': msg.get('content', '')
-                  }
-                  self.current_messages.append(validated_msg)
+            if isinstance(msg, dict):
+               validated_msg = {
+                  'message_id': msg.get('message_id'),
+                  'timestamp': msg.get('timestamp', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                  'username': msg.get('username', 'Unknown'),
+                  'content': msg.get('content', '')
+               }
+               self.current_messages.append(validated_msg)
          
-         print(f"DEBUG: Processed {len(self.current_messages)} valid messages")
-         
-         # Set up message callback before displaying chat
+         # Set up message callback and display chat
          self.client.set_message_callback(self.handle_incoming_message)
-         print("DEBUG: Message callback set")
-         
-         # Display chat
          self.display_chat_messages()
          
          # Enter chat loop
          self.chat_loop()
                
       except Exception as e:
-         print(f"DEBUG: Error in handle_private_chat: {str(e)}")
-         self.add_to_history(f"Error starting private chat: {str(e)}")
-         # Clean up on error
+         self.add_to_history(f"Error starting chat: {str(e)}")
          self.current_chat = None
          self.current_messages = []
          self.client.set_message_callback(None)

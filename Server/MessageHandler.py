@@ -127,7 +127,7 @@ class MessageHandler:
 
     def get_user_chats(self, user_id):
         """
-        Get all chats for a user.
+        Get all chats for a user including last message information.
         
         Args:
             user_id: ID of user
@@ -140,14 +140,20 @@ class MessageHandler:
             formatted_chats = []
             
             for chat in chats:
-                # Get chat participants
-                participants = self._get_chat_participants(chat['chat_id'])
+                chat_id = chat['chat_id']
+                
+                # Get chat participants (usernames instead of IDs)
+                participants = self._get_chat_participants_with_names(chat_id)
+                
+                # Get last message for this chat
+                last_message = self._get_last_message(chat_id)
                 
                 formatted_chats.append({
-                    'chat_id': chat['chat_id'],
+                    'chat_id': chat_id,
                     'chat_type': chat['chat_type'],
                     'created_at': chat['created_at'],
-                    'participants': participants
+                    'participants': participants,
+                    'last_message': last_message
                 })
             
             return formatted_chats
@@ -179,6 +185,52 @@ class MessageHandler:
             return [row['user_id'] for row in cursor.fetchall()]
         except sqlite3.Error:
             return []
+        
+    def _get_chat_participants_with_names(self, chat_id):
+        """Get list of participant usernames for a chat."""
+        try:
+            cursor = self.user_manager.conn.cursor()
+            cursor.execute('''
+                SELECT users.username
+                FROM chat_members 
+                JOIN users ON chat_members.user_id = users.user_id
+                WHERE chat_members.chat_id = ?
+            ''', (chat_id,))
+            return [row['username'] for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            print(f"Error getting participant names: {e}")
+            return []
+
+    def _get_last_message(self, chat_id):
+        """Get the last message from a chat."""
+        try:
+            cursor = self.user_manager.conn.cursor()
+            cursor.execute('''
+                SELECT 
+                    messages.message_id,
+                    messages.message_content as content,
+                    messages.timestamp,
+                    users.username
+                FROM messages
+                JOIN users ON messages.sender_id = users.user_id
+                WHERE messages.chat_id = ?
+                ORDER BY messages.message_id DESC
+                LIMIT 1
+            ''', (chat_id,))
+            
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'message_id': row['message_id'],
+                    'content': row['content'],
+                    'timestamp': row['timestamp'],
+                    'username': row['username']
+                }
+            return None
+            
+        except sqlite3.Error as e:
+            print(f"Error getting last message: {e}")
+            return None
 
     def _handle_pending_message(self, chat_id, message_id, sender_id, content):
         """Store message for offline participants."""

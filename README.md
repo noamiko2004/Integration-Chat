@@ -1,132 +1,143 @@
-![InteChat Logo](Client/Assets/InteChatLogo.png)
+# **InteChat** - Secure Private Messaging
 
-# **Integration-Chat: InteChat**
+![InteChat Logo](client/assets/InteChatLogo.png)
 
-Welcome to **InteChat**, a secure, fast, and reliable multi-user chat system! With InteChat, users can seamlessly connect with others in private chats or groups, enjoying end-to-end encryption and robust features.
+Welcome to **InteChat**, a lightweight and secure private messaging system built with Python. InteChat offers end-to-end encrypted communication in a clean, terminal-based interface.
 
----
+## **✨ Key Features**
 
-## **Features**
+- **🔒 End-to-End Encryption**: All messages are secured using RSA encryption
+- **👥 Private Messaging**: Direct, secure communication between users
+- **📜 Message History**: Access your chat history anytime
+- **⚡ Real-time Updates**: Instant message delivery
+- **🎯 Clean Interface**: Intuitive terminal-based UI with visual indicators
+- **🛡️ Secure Authentication**: bcrypt-hashed passwords and session tokens
 
-- **Multi-User Chat**: Chat with other users or join groups to collaborate.
-- **Secure Communication**: Messages are encrypted for your privacy.
-- **User Authentication**: Register with a unique username and safely stored password.
-- **Chat History**: Messages are logged with timestamps and usernames, retrievable on demand.
-- **CLI-Based Interface**: A lightweight and intuitive command-line interface.
+## **🚀 Quick Start**
 
----
+### Prerequisites
+- Python 3.10 or higher
+- pip package manager
 
-## **System Overview**
-
-InteChat is designed with a clear separation between the **Client** and **Server** to ensure scalability and modularity.
-
-### **Client Side**
-
-- Simple CLI for user interactions (register, login, chat).
-- Encrypts messages before sending them to the server.
-- Displays chat history loaded dynamically from the server.
-
-### **Server Side**
-
-- Manages user registration and authentication.
-- Handles chat message storage and retrieval.
-- Ensures real-time communication between clients.
-
----
-
-## **How It Works**
-
-1. **Register**: Users create an account with a unique username.
-2. **Login**: Authenticate with secure credentials.
-3. **Start Chatting**:
-   - Private Chats: Send direct messages to another user.
-   - Group Chats: Create or join groups for collaborative discussions.
-4. **Message Handling**:
-   - Messages include the date, time, sender's username, and content.
-   - Chat history is stored and managed by the server.
-
----
-
-## **Security Features**
-
-- **Encryption**: All messages are encrypted using RSA.
-- **Hashed Passwords**: User passwords are hashed with bcrypt for secure storage.
-- **Session Management**: Session tokens ensure secure and authenticated communication.
-
----
-
-## **Directory Structure**
-
-```
-project/
-├── config.json                # Global configuration settings
-├── client/                    # Client-side code
-│   ├── assets/                # Visual and branding assets
-│   ├── main.py                # Entry point for the client
-│   ├── ClientComm.py          # Handles client-server communication
-│   ├── Encryption.py          # Manages encryption for secure messaging
-├── server/                    # Server-side code
-│   ├── storage/               # Persistent storage for chats and users
-│   │   ├── messages/          # Chat logs
-│   │   ├── chat_database.db   # SQLite database
-│   ├── logs/                  # Server logs
-│   ├── main.py                # Entry point for the server
-│   ├── ServerComm.py          # Manages client connections
-│   ├── UserManager.py         # Handles user authentication
-│   ├── MessageHandler.py      # Manages chat history
-│   ├── Encryption.py          # Manages encryption on the server
-```
-
----
-
-## **Setup and Usage**
-
-### **1. Prerequisites**
-
-- Python 3.10+
-- Required Python libraries (install via `requirements.txt`):
-  ```bash
-  pip install -r requirements.txt
-  ```
-
-### **2. Run the Server**
-
-1. Navigate to the `server/` directory.
-2. Start the server:
+### Installation
+1. Clone the repository:
    ```bash
+   git clone https://github.com/noamiko2004/Integration-Chat.git
+   cd Integration-Chat
+   ```
+
+2. Create and activate a virtual environment (recommended):
+   ```bash
+   python -m venv .venv
+   # On Windows:
+   .venv\Scripts\activate
+   # On Unix or MacOS:
+   source .venv/bin/activate
+   ```
+
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+### Running the Application
+
+1. Start the server:
+   ```bash
+   cd server
    python main.py
    ```
 
-### **3. Run the Client**
-
-1. Navigate to the `client/` directory.
-2. Start the client:
+2. In a new terminal, start the client:
    ```bash
+   cd client
    python main.py
    ```
 
-### **4. Begin Chatting**
+## **💡 Usage Guide**
 
-Follow the menu prompts in the client CLI to register, log in, and chat!
+### First Time Setup
+1. Choose "Register" from the main menu
+2. Create your account with a username (4-20 characters) and password (8+ characters)
+3. Log in with your credentials
 
----
+### Starting a Chat
+1. Select "Start Chat" from the menu
+2. Enter the username of the person you want to chat with
+3. Start messaging!
 
-## **Future Enhancements**
+### Navigation
+- Type `/exit` to leave a chat
+- Arrow keys to navigate input
+- Messages from you appear with "→"
+- Messages from others appear with "←"
 
-- File sharing between users.
-- Emoji support and text formatting in chats.
-- Mobile-friendly GUI for enhanced usability.
-- Cloud-based deployment for scalability.
+## **🏗️ Project Structure**
 
----
+```
+Integration-Chat/
+├── config.json              # Server configuration
+├── requirements.txt         # Project dependencies
+├── client/
+│   ├── assets/             # Logos and banners
+│   ├── main.py             # Client entry point
+│   ├── ClientComm.py       # Client networking
+│   ├── chat_input.py       # Input handling
+│   └── Encryption.py       # Client-side encryption
+└── server/
+    ├── main.py             # Server entry point
+    ├── ServerComm.py       # Connection handling
+    ├── MessageHandler.py   # Chat management
+    ├── UserManager.py      # User authentication
+    ├── Encryption.py       # Server-side encryption
+    └── storage/            # Database storage
+```
 
-## **Contributing**
+## **🔐 Security Features**
 
-Contributions are welcome! Feel free to open issues or submit pull requests. Let’s make InteChat even better together!
+- **Password Security**: 
+  - Passwords are hashed using bcrypt
+  - Never stored in plaintext
+  - Client-side length and complexity validation
 
----
+- **Communication Security**:
+  - RSA encryption for key exchange
+  - Session-based encryption
+  - Secure message framing
 
-## **License**
+- **Session Management**:
+  - Unique session tokens for each login
+  - Automatic session cleanup
+  - Protected against session hijacking
 
-This project is licensed under the [MIT License](LICENSE).
+## **🌟 Feature Highlights**
 
+### Real-time Chat Display
+```
+=== Chat with alice ===
+[2025-02-04 15:30:22] → bob: Hey Alice!
+[2025-02-04 15:30:25] ← alice: Hi Bob, how are you?
+[2025-02-04 15:30:30] → bob: I'm good, thanks!
+==================================================
+```
+
+### Active Chats View
+```
+┌───────────────────────────────────┐
+│ Chat ID: 1                        │
+│ Participants: alice, bob          │
+│ Last Message: [15:30:30] bob: I'm good, thanks! │
+└───────────────────────────────────┘
+```
+
+## **🛠️ Technical Details**
+
+- **Network Protocol**: TCP with custom message framing
+- **Database**: SQLite3 for persistent storage
+- **Encryption**: RSA + Session-based encryption
+- **Interface**: Pure Python terminal UI
+- **Message Format**: JSON-based protocol
+
+## **📄 License**
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
