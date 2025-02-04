@@ -4,6 +4,34 @@ import json
 import time
 from Encryption import EncryptionManager
 
+class RateLimiter:
+    def __init__(self):
+        self.message_timestamps = {}  # user_id -> list of timestamps
+        self.WINDOW_SIZE = 5  # seconds
+        self.MAX_MESSAGES = 10  # max messages per window
+        
+    def can_send_message(self, user_id):
+        """Check if user can send a message based on rate limit."""
+        current_time = time.time()
+        
+        # Get user's message timestamps
+        timestamps = self.message_timestamps.get(user_id, [])
+        
+        # Remove timestamps outside the window
+        timestamps = [ts for ts in timestamps if current_time - ts <= self.WINDOW_SIZE]
+        
+        # Update timestamps list
+        self.message_timestamps[user_id] = timestamps
+        
+        # Check if user is within rate limit
+        if len(timestamps) >= self.MAX_MESSAGES:
+            return False
+            
+        # Add new timestamp
+        timestamps.append(current_time)
+        return True
+
+
 class ServerConnection:
     def __init__(self, handlers=None, config_path="../config.json"):
         """Initialize the server connection manager."""
@@ -15,6 +43,7 @@ class ServerConnection:
         self.is_running = False
         self.accept_thread = None
         self.handlers = handlers or {}  # Store message handlers
+        self.receive_buffers = {}  # Add buffer for each client
         self.load_config(config_path)
         
         # Generate server keys on initialization
@@ -76,6 +105,31 @@ class ServerConnection:
             self.session_established = False
             self.last_activity = time.time()
             self.user_id = None  # Store user_id after login
+
+    class MessageHandler:
+        def __init__(self, user_manager):
+            self.user_manager = user_manager
+            self.encryption = EncryptionManager()
+            self.pending_messages = {}
+            self.rate_limiter = RateLimiter()  # Add rate limiter
+
+        def save_message(self, chat_id, sender_id, content, encryption_keys=None):
+            """Save a message with rate limiting."""
+            try:
+                # Check rate limit
+                if not self.rate_limiter.can_send_message(sender_id):
+                    return False, "Message rate limit exceeded. Please wait a few seconds."
+
+                # Verify sender is in chat
+                is_member = self._verify_chat_membership(chat_id, sender_id)
+                if not is_member:
+                    return False, "Sender is not a member of this chat"
+
+                # Rest of the existing save_message code...
+                
+            except Exception as e:
+                return False, f"Error saving message: {str(e)}"
+
     
     def load_config(self, config_path):
         """Load server IP and port from config.json."""
@@ -226,23 +280,67 @@ class ServerConnection:
         return True
     
     def send_to_client(self, client_socket, data):
-        """Send data to a specific client."""
+        """Send data to a specific client with message framing."""
         try:
-            client_socket.sendall(json.dumps(data).encode())
+            # Convert response to JSON string
+            json_data = json.dumps(data)
+            
+            # Create frame with message length prefix and delimiter
+            frame = f"{len(json_data)}::{json_data}"
+            
+            # Send the framed message
+            client_socket.sendall(frame.encode())
         except Exception as e:
             print(f"Error sending to client: {str(e)}")
-            raise    
+            raise
 
     def receive_from_client(self, client_socket):
-        """Receive data from a client."""
+        """Receive framed data from a client."""
         try:
-            data = client_socket.recv(4096).decode()
-            if not data:
-                raise ConnectionError("Client disconnected")
-            return json.loads(data)
-        except json.JSONDecodeError as e:
-            print(f"Invalid JSON received: {str(e)}")
-            raise
+            if client_socket not in self.receive_buffers:
+                self.receive_buffers[client_socket] = ""
+            
+            buffer = self.receive_buffers[client_socket]
+            
+            while True:
+                # Read more data if needed
+                if '::' not in buffer:
+                    data = client_socket.recv(4096).decode()
+                    if not data:
+                        raise ConnectionError("Client disconnected")
+                    buffer += data
+                
+                # Process framed message
+                if '::' in buffer:
+                    length_str, rest = buffer.split('::', 1)
+                    try:
+                        length = int(length_str)
+                    except ValueError:
+                        # Invalid length prefix, clear buffer and try again
+                        buffer = ""
+                        continue
+                    
+                    # Check if we have a complete message
+                    if len(rest) >= length:
+                        message = rest[:length]
+                        buffer = rest[length:]  # Keep remaining data
+                        self.receive_buffers[client_socket] = buffer
+                        
+                        try:
+                            return json.loads(message)
+                        except json.JSONDecodeError as e:
+                            print(f"Invalid JSON received: {str(e)}")
+                            raise
+                    
+                    # Need more data for complete message
+                    continue
+                
+                # No complete message yet, read more
+                data = client_socket.recv(4096).decode()
+                if not data:
+                    raise ConnectionError("Client disconnected")
+                buffer += data
+                
         except Exception as e:
             print(f"Error receiving from client: {str(e)}")
             raise
@@ -253,6 +351,8 @@ class ServerConnection:
             client_info = self.connected_clients.get(client_socket)
             if client_info:
                 print(f"Closing connection from {client_info.address}")
+                if client_socket in self.receive_buffers:
+                    del self.receive_buffers[client_socket]
                 del self.connected_clients[client_socket]
             client_socket.close()
         except Exception as e:

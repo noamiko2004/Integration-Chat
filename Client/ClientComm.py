@@ -14,7 +14,9 @@ class ClientComm:
         self.is_connected = False
         self.message_callback = None
         self.receive_thread = None
-        self.response_queue = []  # Queue for responses to direct requests
+        self.response_queue = []
+        self.receive_buffer = ""
+        self.shutting_down = False  # Add flag for clean shutdown
         import os
 
         config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.json"))
@@ -34,6 +36,9 @@ class ClientComm:
     
     def connect(self):
         """Establish a connection with the server and perform secure handshake."""
+        if self.shutting_down:
+            return False
+            
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.connect((self.server_ip, self.server_port))
@@ -57,31 +62,30 @@ class ClientComm:
     def _establish_secure_connection(self):
         """Perform the secure handshake protocol with the server."""
         try:
-            print("Starting security handshake...")  # Debug print
+            print("Starting security handshake...")
             
             # 1. Generate client keys
             self.encryption.generate_keys()
             
-            # 2. Send public key to server
+            # 2. Send public key to server with framing
             request = {
                 "type": "key_exchange",
                 "data": {
                     "client_public_key": self.encryption.get_public_key().decode()
                 }
             }
-            self.socket.sendall(json.dumps(request).encode())
-            print("Sent key exchange request")  # Debug print
+            json_data = json.dumps(request)
+            frame = f"{len(json_data)}::{json_data}"
+            self.socket.sendall(frame.encode())
             
-            # 3. Receive server's public key
-            response = json.loads(self.socket.recv(4096).decode())
-            print(f"Received server response: {response}")  # Debug print
-            
+            # 3. Receive server's public key (using framed message handling)
+            response = self._receive_one_message()
             if response.get("type") != "key_exchange":
                 raise ValueError("Invalid key exchange response")
             
             self.encryption.set_server_public_key(response["data"]["server_public_key"].encode())
             
-            # 4. Generate and send session key
+            # 4. Generate and send session key with framing
             session_key = self.encryption.generate_session_key()
             encrypted_session_key = self.encryption.encrypt_session_key()
             
@@ -91,13 +95,12 @@ class ClientComm:
                     "encrypted_session_key": encrypted_session_key.hex()
                 }
             }
-            self.socket.sendall(json.dumps(request).encode())
-            print("Sent session key")  # Debug print
+            json_data = json.dumps(request)
+            frame = f"{len(json_data)}::{json_data}"
+            self.socket.sendall(frame.encode())
             
-            # 5. Wait for confirmation
-            response = json.loads(self.socket.recv(4096).decode())
-            print(f"Received confirmation response: {response}")  # Debug print
-            
+            # 5. Wait for confirmation (using framed message handling)
+            response = self._receive_one_message()
             if response.get("type") != "session_confirmed":
                 raise ValueError("Session establishment failed")
             
@@ -105,14 +108,40 @@ class ClientComm:
             return True
             
         except Exception as e:
-            print(f"Handshake error: {str(e)}")  # Debug print
+            print(f"Handshake error: {str(e)}")
             raise RuntimeError(f"Failed to establish secure connection: {str(e)}")
         
+    def _receive_one_message(self):
+        """Receive exactly one complete framed message."""
+        buffer = ""
+        while True:
+            data = self.socket.recv(4096).decode()
+            if not data:
+                raise ConnectionError("Server disconnected")
+                
+            buffer += data
+            
+            if '::' in buffer:
+                length_str, rest = buffer.split('::', 1)
+                try:
+                    length = int(length_str)
+                except ValueError:
+                    buffer = ""
+                    continue
+                    
+                if len(rest) >= length:
+                    message = rest[:length]
+                    return json.loads(message)
+
+
     def send_request(self, request_type, data):
         """Send a formatted request to the server."""
+        if self.shutting_down:
+            return False
+            
         if not self.is_connected:
-            # Try to reconnect once
-            if not self.reconnect():
+            # Only try to reconnect if we're not shutting down
+            if not self.shutting_down and not self.reconnect():
                 raise ConnectionError("Not connected to server")
         
         try:
@@ -120,17 +149,24 @@ class ClientComm:
                 "type": request_type,
                 "data": data
             }
-            self.socket.sendall(json.dumps(request).encode())
+            json_data = json.dumps(request)
+            frame = f"{len(json_data)}::{json_data}"
+            self.socket.sendall(frame.encode())
             return True
         except Exception as e:
-            self.is_connected = False
+            if not self.shutting_down:
+                self.is_connected = False
             raise RuntimeError(f"Failed to send request: {str(e)}")
     
     def reconnect(self):
         """Attempt to reconnect to the server."""
+        if self.shutting_down:
+            return False
+            
         try:
             print("Attempting to reconnect to server...")
             self.disconnect()  # Clean up old connection
+            self.shutting_down = False  # Reset shutdown flag for new connection
             return self.connect()
         except Exception as e:
             print(f"Reconnection failed: {e}")
@@ -160,39 +196,61 @@ class ClientComm:
             print(f"Failed to send message: {str(e)}")
             return False
     
-    def _receive_loop(self):
-        """Background thread for receiving messages."""
+    def _receive_message(self):
+        """Receive a complete message with framing."""
         while self.is_connected:
             try:
+                # Read data into buffer
                 data = self.socket.recv(4096).decode()
                 if not data:
                     continue
-
-                response = json.loads(data)
-                print(f"DEBUG: Received in loop: {response}")
                 
-                if response.get("type") == "new_message":
-                    print("DEBUG: Got new message in receive loop")
-                    message_data = response.get("data", {})
+                self.receive_buffer += data
+                
+                # Process all complete messages in buffer
+                while '::' in self.receive_buffer:
+                    # Find the message length and content
+                    length_str, rest = self.receive_buffer.split('::', 1)
+                    try:
+                        length = int(length_str)
+                    except ValueError:
+                        # Invalid length prefix, clear buffer and continue
+                        self.receive_buffer = ""
+                        break
                     
-                    # Ensure message has proper format
-                    if message_data and isinstance(message_data, dict):
-                        # Add timestamp if not present
-                        if 'timestamp' not in message_data:
-                            message_data['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    # Check if we have a complete message
+                    if len(rest) >= length:
+                        message = rest[:length]
+                        self.receive_buffer = rest[length:]  # Keep remaining data
                         
-                        if self.message_callback:
-                            self.message_callback(response)
-                else:
-                    # Store response for the main thread
-                    print(f"DEBUG: Adding to queue: {response}")
-                    self.response_queue.append(response)
+                        try:
+                            # Parse and handle the message
+                            response = json.loads(message)
+                            if response.get("type") == "new_message":
+                                if self.message_callback:
+                                    self.message_callback(response)
+                            else:
+                                self.response_queue.append(response)
+                        except json.JSONDecodeError as e:
+                            print(f"Error decoding message: {e}")
+                    else:
+                        # Incomplete message, wait for more data
+                        break
                         
             except Exception as e:
                 print(f"Error in receive loop: {e}")
-                import traceback
-                traceback.print_exc()
                 self.is_connected = False
+                break
+
+    def _receive_loop(self):
+        """Background thread for receiving messages."""
+        while self.is_connected and not self.shutting_down:
+            try:
+                self._receive_message()
+            except Exception as e:
+                if not self.shutting_down:
+                    print(f"Error in receive loop: {e}")
+                    self.is_connected = False
                 break
             
     def set_message_callback(self, callback):
@@ -201,15 +259,29 @@ class ClientComm:
     
     def disconnect(self):
         """Gracefully close the connection."""
+        self.shutting_down = True  # Set shutdown flag first
         self.is_connected = False
+        
         if self.socket:
             try:
-                self.send_request("disconnect", {})
+                # Send disconnect request only if we were connected
+                if not self.socket._closed:
+                    try:
+                        self.send_request("disconnect", {})
+                    except:
+                        pass
+                self.socket.close()
             except:
                 pass
-            self.socket.close()
-        if self.receive_thread:
+        
+        # Wait for receive thread to finish with a short timeout
+        if self.receive_thread and self.receive_thread.is_alive():
             self.receive_thread.join(timeout=1.0)
+        
+        # Clear any remaining state
+        self.receive_buffer = ""
+        self.response_queue.clear()
+        self.message_callback = None
         print("Disconnected from server.")
 
     def send_register_request(self, username, password):
@@ -228,6 +300,9 @@ class ClientComm:
 
     def get_next_response(self):
         """Get the next response from the queue with timeout."""
+        if self.shutting_down:
+            return None
+            
         start_time = time.time()
         timeout = 5.0  # 5 second timeout
         
@@ -235,17 +310,17 @@ class ClientComm:
             time.sleep(0.1)  # Wait for response
             
         if not self.response_queue:
-            if not self.is_connected:
+            if not self.is_connected and not self.shutting_down:
                 raise ConnectionError("Not connected to server")
             return None
             
-        response = self.response_queue.pop(0)
-        print(f"Debug - Raw response from queue: {response}")  # Debug print
-        
-        # Get the data part of the response with safer handling
-        if isinstance(response, dict):
-            return response.get('data', {})
-        return {}
+        try:
+            response = self.response_queue.pop(0)
+            if isinstance(response, dict):
+                return response.get('data', {})
+            return {}
+        except IndexError:
+            return None
 
 # Test Cases
 if __name__ == "__main__":

@@ -343,35 +343,25 @@ class ChatClient:
    def chat_loop(self):
       """Handle sending and receiving messages in a chat."""
       try:
-         # Set up message callback for real-time updates
-         self.client.set_message_callback(self.handle_incoming_message)
-         
-         # Initialize chat input handler
-         self.chat_input = ChatInput()
+         print("DEBUG: Entering chat loop")
          
          while self.current_chat:
-            message = self.chat_input.get_input()
-            print("DEBUG: User entered message:", message)
+            message = input("")  # Empty prompt since display_chat_messages shows it
             
             if message.lower() == '/exit':
                print("DEBUG: Exiting chat")
-               self.current_chat = None
-               self.current_messages = []
-               self.client.set_message_callback(None)  # Remove callback
-               self.chat_input = None  # Clean up chat input
+               self.cleanup_chat()
                clear_screen()
                break
             
             if message:
                print("DEBUG: Sending message to server")
-               timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-               
                # Prepare message data
                message_data = {
                   "token": self.session_token,
                   "chat_id": self.current_chat,
                   "content": message,
-                  "timestamp": timestamp
+                  "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                }
                
                # Send message
@@ -379,21 +369,39 @@ class ChatClient:
                   # Add message locally
                   new_msg = {
                         'message_id': None,
-                        'timestamp': timestamp,
+                        'timestamp': message_data["timestamp"],
                         'username': self.username,
                         'content': message
                   }
                   self.current_messages.append(new_msg)
                   self.display_chat_messages()
-               
+                     
          print("DEBUG: Chat loop ended")
       except KeyboardInterrupt:
          print("DEBUG: Chat interrupted")
-         self.current_chat = None
-         self.current_messages = []
-         self.client.set_message_callback(None)
-         self.chat_input = None
+         self.cleanup_chat()
          clear_screen()
+      except Exception as e:
+         print(f"DEBUG: Error in chat loop: {str(e)}")
+         self.cleanup_chat()
+         clear_screen()
+
+   def cleanup_chat(self):
+      """Clean up chat-related state."""
+      print("DEBUG: Cleaning up chat state")
+      self.current_chat = None
+      self.chat_target = None
+      self.current_messages = []
+      self.client.set_message_callback(None)  # Remove message callback
+      
+      # Clear any pending messages in the client's queue
+      if hasattr(self.client, 'response_queue'):
+         self.client.response_queue.clear()
+      if hasattr(self.client, 'receive_buffer'):
+         self.client.receive_buffer = ""
+      
+      print("DEBUG: Chat cleanup complete")
+
 
    def handle_menu_choice(self, choice):
       """Handle menu choice after login."""
@@ -489,17 +497,19 @@ class ChatClient:
          
          # Request chat session with user
          try:
-            self.client.send_request("start_private_chat", {
-               "token": self.session_token,
-               "target_username": target_username
-            })
+               print("DEBUG: Sending chat request to server")
+               self.client.send_request("start_private_chat", {
+                  "token": self.session_token,
+                  "target_username": target_username
+               })
          except ConnectionError:
-            self.add_to_history("Lost connection to server. Please try logging in again.")
-            self.session_token = None
-            return
+               self.add_to_history("Lost connection to server. Please try logging in again.")
+               self.session_token = None
+               return
                
+         print("DEBUG: Waiting for server response")
          response = self.client.get_next_response()
-         print("DEBUG: Got chat response:", response)
+         print(f"DEBUG: Got chat response: {response}")
          
          if not response:
                self.add_to_history("No response from server. Please try again.")
@@ -514,33 +524,43 @@ class ChatClient:
          self.chat_target = response.get('target_username')
          messages = response.get('messages', [])
          
-         # Validate messages before storing
-         self.current_messages = []
-         for msg in messages:
-            if isinstance(msg, dict):
-               # Ensure all required fields have default values
-               validated_msg = {
-                  'message_id': msg.get('message_id'),
-                  'timestamp': msg.get('timestamp', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-                  'username': msg.get('username', 'Unknown'),
-                  'content': msg.get('content', '')
-               }
-               self.current_messages.append(validated_msg)
+         print(f"DEBUG: Chat established - ID: {self.current_chat}, Target: {self.chat_target}")
+         print(f"DEBUG: Received {len(messages)} messages")
          
-         print("DEBUG: Initial messages:", len(self.current_messages))
+         # Reset current messages before adding new ones
+         self.current_messages = []
+         
+         # Validate messages before storing
+         for msg in messages:
+               if isinstance(msg, dict):
+                  # Ensure all required fields have default values
+                  validated_msg = {
+                     'message_id': msg.get('message_id'),
+                     'timestamp': msg.get('timestamp', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                     'username': msg.get('username', 'Unknown'),
+                     'content': msg.get('content', '')
+                  }
+                  self.current_messages.append(validated_msg)
+         
+         print(f"DEBUG: Processed {len(self.current_messages)} valid messages")
+         
+         # Set up message callback before displaying chat
+         self.client.set_message_callback(self.handle_incoming_message)
+         print("DEBUG: Message callback set")
          
          # Display chat
          self.display_chat_messages()
          
          # Enter chat loop
          self.chat_loop()
-
+               
       except Exception as e:
-         print(f"DEBUG: Error in handle_private_chat:", e)
+         print(f"DEBUG: Error in handle_private_chat: {str(e)}")
          self.add_to_history(f"Error starting private chat: {str(e)}")
          # Clean up on error
          self.current_chat = None
          self.current_messages = []
+         self.client.set_message_callback(None)
 
 
 def clear_screen():
