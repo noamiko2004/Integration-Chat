@@ -1,6 +1,6 @@
 # **InteChat** - Secure Private Messaging
 
-![InteChat Logo](client/assets/InteChatLogo.png)
+![InteChat Logo](Client/Assets/InteChatLogo.png)
 
 Welcome to **InteChat**, a lightweight and secure private messaging system built with Python. InteChat offers end-to-end encrypted communication in a clean, terminal-based interface.
 
